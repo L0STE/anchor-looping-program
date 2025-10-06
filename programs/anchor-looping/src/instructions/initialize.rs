@@ -1,6 +1,6 @@
 use anchor_lang::{prelude::*, solana_program::{instruction::Instruction, program::{invoke, invoke_signed}}};
 use anchor_spl::token::Token;
-use crate::constant::KAMINO_PROGRAM_ID;
+use crate::constant::{KAMINO_PROGRAM_ID, PROTOCOL_AUTHORITY_BUMP};
 
 const INIT_USER_METADATA_DISCRIMINATOR: [u8; 8] = [117, 169, 176, 69, 197, 23, 15, 162];
 const INIT_OBLIGATION_DISCRIMINATOR: [u8; 8] = [251, 10, 231, 76, 27, 11, 159, 96];
@@ -13,7 +13,7 @@ pub struct Initialize<'info> {
     #[account(
         mut,
         seeds = [b"auth"],
-        bump,
+        bump = PROTOCOL_AUTHORITY_BUMP,
     )]
     pub protocol_authority: SystemAccount<'info>,
 
@@ -94,10 +94,10 @@ impl<'info> Initialize<'info> {
     /// In this occasion we don't need to pass in any referrer but if you let user 
     /// interact with Kamino through your program you probably want to pass in one 
     /// of your PDAs as referrer to cash in some rewards.
-    pub fn initialize_user_metadata(&mut self, bump: u8) -> Result<()> {
+    pub fn initialize_user_metadata(&mut self) -> Result<()> {
         let signer_seeds: [&[&[u8]];1] = [&[
             b"auth".as_ref(),
-            &[bump]
+            &[PROTOCOL_AUTHORITY_BUMP]
         ]];
 
         let accounts = vec![
@@ -143,10 +143,10 @@ impl<'info> Initialize<'info> {
     /// 
     /// Some of the inputs are used in their frontend and for this reason we pass in
     /// Pubkey::default().as_ref(), or 0u8 as some of the parameters. 
-    pub fn initialize_obligation(&mut self, bump: u8) -> Result<()> {
+    pub fn initialize_obligation(&mut self) -> Result<()> {
         let signer_seeds: [&[&[u8]];1] = [&[
             b"auth".as_ref(),
-            &[bump]
+            &[PROTOCOL_AUTHORITY_BUMP]
         ]];
 
         let accounts = vec![

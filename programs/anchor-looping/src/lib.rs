@@ -8,10 +8,22 @@ declare_id!("HZ4pzn7pTpkVRpxpszbvBxxQSS11Pu3oYt2PyWW6iFKU");
 
 #[program]
 pub mod anchor_looping {
+    use crate::constant::FLAG_HAS_COLLATERAL;
+
     use super::*;
 
     pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
-        msg!("Greetings from: {:?}", ctx.program_id);
-        Ok(())
+        ctx.accounts.initialize_user_metadata()?;
+        ctx.accounts.initialize_obligation()?;
+        ctx.accounts.initialize_obligation_farms_for_reserve()
+    }
+
+    pub fn deposit(ctx: Context<Deposit>, has_collateral_or_borrows_flags: u8, amount: u64) -> Result<()> {
+        ctx.accounts.refresh_reserve_collateral()?;
+        if has_collateral_or_borrows_flags & FLAG_HAS_COLLATERAL != 0 {
+            ctx.accounts.refresh_reserve_borrow()?;
+        }
+        ctx.accounts.refresh_obligation(has_collateral_or_borrows_flags)?;
+        ctx.accounts.deposit(amount)
     }
 }
