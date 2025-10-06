@@ -185,7 +185,7 @@ impl<'info> Deposit<'info> {
 
             Ok(())
         } else {
-            Ok(())
+            return Err(ProgramError::InvalidInstructionData.into());
         }
     }
 

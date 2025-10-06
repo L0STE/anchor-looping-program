@@ -5,6 +5,7 @@ pub const PROTOCOL_AUTHORITY_BUMP: u8 =
 
 
 pub const KAMINO_PROGRAM_ID: Pubkey = pubkey!("KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD");
+pub const JUPITER_PROGRAM_ID: Pubkey = pubkey!("JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4");
 
 /// Since deserializing the data from the smart contract side is extremely complex, we are going to pass in 
 /// flags from the frontend to indicate if the obligation has collateral or borrows. 
