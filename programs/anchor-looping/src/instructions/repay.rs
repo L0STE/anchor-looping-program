@@ -1,16 +1,16 @@
 use anchor_lang::{prelude::*, solana_program::{instruction::Instruction, program::{invoke, invoke_signed}}};
 use anchor_spl::token::{Mint, Token, TokenAccount};
-use crate::constant::{FLAG_HAS_BORROWS, JUPITER_PROGRAM_ID, KAMINO_PROGRAM_ID, PROTOCOL_AUTHORITY_BUMP};
+use crate::constant::{JUPITER_PROGRAM_ID, KAMINO_PROGRAM_ID, PROTOCOL_AUTHORITY_BUMP};
 
 const REFRESH_RESERVE_DISCRIMINATOR: [u8; 8] = [2, 218, 138, 235, 79, 201, 25, 102];
 const REFRESH_OBLIGATION_DISCRIMINATOR: [u8; 8] = [33, 132, 147, 228, 151, 192, 72, 89];
-const DEPOSIT_RESERVE_LIQUIDITY_AND_OBLIGATION_COLLATERAL_V2_DISCRIMINATOR: [u8; 8] = [216, 224, 191, 27, 204, 151, 102, 175];
-const BORROW_OBLIGATION_LIQUIDITY_V2_DISCRIMINATOR: [u8; 8] = [161, 128, 143, 245, 171, 199, 194, 6];
-const SHARED_ACCOUNTS_ROUTE_DISCRIMINATOR: [u8; 8] = [193, 32, 155, 51, 65, 214, 156, 129];
-const ROUTE_DISCRIMINATOR: [u8; 8] = [229, 23, 203, 151, 122, 227, 173, 42];
+const WITHDRAW_OBLIGATION_COLLATERAL_AND_REEDEM_RESERVE_COLLATERAL_V2_DISCRIMINATOR: [u8; 8] = [235, 52, 119, 152, 149, 197, 20, 7];
+const REPAY_OBLIGATION_LIQUIDITY_V2_DISCRIMINATOR: [u8; 8] = [116, 174, 213, 76, 180, 53, 210, 144];
+const SHARED_ACCOUNTS_EXACT_OUT_ROUTE_DISCRIMINATOR: [u8; 8] = [176, 209, 105, 168, 154, 125, 69, 62];
+const EXACT_OUT_ROUTE_DISCRIMINATOR: [u8; 8] = [208, 51, 239, 151, 123, 43, 237, 92];
 
 #[derive(Accounts)]
-pub struct Looping<'info> {
+pub struct Repay<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
     #[account(
@@ -89,16 +89,13 @@ pub struct Looping<'info> {
     pub reserve_collateral_mint: UncheckedAccount<'info>,
     #[account(mut)]
     /// CHECK: checked by the Kamino program
-    pub reserve_destination_deposit_collateral: UncheckedAccount<'info>,
+    pub reserve_source_collateral: UncheckedAccount<'info>,
     #[account(mut)]
     /// CHECK: checked by the Kamino program
     pub reserve_borrow: UncheckedAccount<'info>,
     #[account(mut)]
     /// CHECK: checked by the Kamino program
-    pub borrow_reserve_source_liquidity: UncheckedAccount<'info>,
-    #[account(mut)]
-    /// CHECK: checked by the Kamino program
-    pub borrow_reserve_liquidity_fee_receiver: UncheckedAccount<'info>,
+    pub borrow_reserve_destination_liquidity: UncheckedAccount<'info>,
     /// CHECK: checked by the Kamino program
     pub scope_oracle: UncheckedAccount<'info>,
     #[account(
@@ -131,7 +128,7 @@ pub struct Looping<'info> {
 
 }
 
-impl<'info> Looping<'info> {
+impl<'info> Repay<'info> {
     /// # Refresh the reserve collateral
     /// 
     /// This is a step needed to refresh the reserve collateral before interacting with it.
@@ -214,24 +211,20 @@ impl<'info> Looping<'info> {
     /// 
     /// Note: We need to supply as remaining account any cranked reserve account that is used in the obligation for
     /// both collateral and borrows.
-    pub fn refresh_obligation(&mut self, flags: u8) -> Result<()> {
+    pub fn refresh_obligation(&mut self) -> Result<()> {
         let mut accounts = vec![
             AccountMeta::new_readonly(self.lending_market.key(), false),            // lending_market
             AccountMeta::new(self.obligation.key(), false),                         // obligation
         ];
         accounts.push(AccountMeta::new(self.reserve_collateral.key(), false));
-        if flags & FLAG_HAS_BORROWS != 0 {
-            accounts.push(AccountMeta::new(self.reserve_borrow.key(), false));
-        }
+        accounts.push(AccountMeta::new(self.reserve_borrow.key(), false));
 
         let mut account_infos = vec![
             self.lending_market.to_account_info(),
             self.obligation.to_account_info(),
         ];
         account_infos.push(self.reserve_collateral.to_account_info());
-        if flags & FLAG_HAS_BORROWS != 0 {
-            account_infos.push(self.reserve_borrow.to_account_info());
-        }
+        account_infos.push(self.reserve_borrow.to_account_info());
 
         let refresh_obligation_ix = Instruction {
             program_id: self.kamino_lending_program.key(),
@@ -249,7 +242,7 @@ impl<'info> Looping<'info> {
         Ok(())
     }
 
-    pub fn borrow_from_collateral(&mut self, amount: u64) -> Result<()> {
+    pub fn withdraw_collateral(&mut self, amount: u64) -> Result<()> {
         let signer_seeds: [&[&[u8]];1] = [&[
             b"auth".as_ref(),
             &[PROTOCOL_AUTHORITY_BUMP]
@@ -260,16 +253,18 @@ impl<'info> Looping<'info> {
             AccountMeta::new(self.obligation.key(), false),                             // obligation
             AccountMeta::new_readonly(self.lending_market.key(), false),                // lending_market
             AccountMeta::new_readonly(self.lending_market_authority.key(), false),      // lending_market_authority
-            AccountMeta::new(self.reserve_borrow.key(), false),                         // borrow_reserve
-            AccountMeta::new_readonly(self.input_mint.key(), false),                    // borrow_reserve_liquidity_mint
-            AccountMeta::new(self.borrow_reserve_source_liquidity.key(), false),        // reserve_source_liquidity
-            AccountMeta::new(self.borrow_reserve_liquidity_fee_receiver.key(), false),  // borrow_reserve_liquidity_fee_receiver
+            AccountMeta::new(self.reserve_collateral.key(), false),                     // withdraw_reserve
+            AccountMeta::new_readonly(self.input_mint.key(), false),                    // reserve_liquidity_mint
+            AccountMeta::new(self.reserve_source_collateral.key(), false),              // reserve_source_collateral
+            AccountMeta::new(self.reserve_collateral_mint.key(), false),                // reserve_collateral_mint
+            AccountMeta::new(self.reserve_liquidity_supply.key(), false),               // reserve_liquidity_supply
             AccountMeta::new(self.input_vault.key(), false),                            // user_destination_liquidity
-            AccountMeta::new_readonly(self.kamino_lending_program.key(), false),        // [optional] referrer_token_state
-            AccountMeta::new_readonly(self.token_program.key(), false),                 // token_program
+            AccountMeta::new_readonly(self.kamino_lending_program.key(), false),        // [optional] placeholder_user_destination_collateral
+            AccountMeta::new_readonly(self.token_program.key(), false),                 // collateral_token_program
+            AccountMeta::new_readonly(self.token_program.key(), false),                 // liquidity_token_program
             AccountMeta::new_readonly(self.instruction_sysvar_account.key(), false),    // instruction_sysvar_account
-            AccountMeta::new_readonly(self.kamino_lending_program.key(), false),        // [optional] obligation_farm_user_state
-            AccountMeta::new_readonly(self.kamino_lending_program.key(), false),        // [optional] reserve_farm_state
+            AccountMeta::new(self.obligation_farm_state.key(), false),                  // [optional] obligation_farm_user_state
+            AccountMeta::new(self.reserve_farm_state.key(), false),                     // [optional] reserve_farm_state
             AccountMeta::new_readonly(self.farms_program.key(), false),                 // farms_program
         ];
 
@@ -278,15 +273,17 @@ impl<'info> Looping<'info> {
             self.obligation.to_account_info(),
             self.lending_market.to_account_info(),
             self.lending_market_authority.to_account_info(),
-            self.reserve_borrow.to_account_info(),
+            self.reserve_collateral.to_account_info(),
             self.input_mint.to_account_info(),
-            self.borrow_reserve_source_liquidity.to_account_info(),
-            self.borrow_reserve_liquidity_fee_receiver.to_account_info(),
+            self.reserve_source_collateral.to_account_info(),
+            self.reserve_collateral_mint.to_account_info(),
+            self.reserve_liquidity_supply.to_account_info(),
             self.input_vault.to_account_info(),
             self.kamino_lending_program.to_account_info(),
             self.token_program.to_account_info(),
             self.instruction_sysvar_account.to_account_info(),
-            self.kamino_lending_program.to_account_info(),
+            self.obligation_farm_state.to_account_info(),
+            self.reserve_farm_state.to_account_info(),
             self.farms_program.to_account_info(),
         ];
 
@@ -294,7 +291,7 @@ impl<'info> Looping<'info> {
             program_id: self.kamino_lending_program.key(),
             accounts,
             data: vec![
-                BORROW_OBLIGATION_LIQUIDITY_V2_DISCRIMINATOR.as_ref(),
+                WITHDRAW_OBLIGATION_COLLATERAL_AND_REEDEM_RESERVE_COLLATERAL_V2_DISCRIMINATOR.as_ref(),
                 &amount.to_le_bytes(),
             ].concat(),
         };
@@ -308,7 +305,7 @@ impl<'info> Looping<'info> {
         Ok(())
     }
 
-    pub fn swap_collateral(&mut self, swap_data: &Vec<u8>, amount: u64, remaining_accounts: &[AccountInfo<'info>]) -> Result<()> {
+    pub fn swap_for_collateral(&mut self, swap_data: &Vec<u8>, amount: u64, remaining_accounts: &[AccountInfo<'info>]) -> Result<()> {
         // Perform a discriminator, amount and slippage check
         let swap_data_length = swap_data.len();
         let bps_offset = swap_data_length - size_of::<u16>() - size_of::<u8>();
@@ -323,13 +320,13 @@ impl<'info> Looping<'info> {
         ]];
 
         let (account_infos, accounts) = match swap_data {            
-            data if data.starts_with(&ROUTE_DISCRIMINATOR) => {
-                // Build the swap instruction accounts
+            data if data.starts_with(&EXACT_OUT_ROUTE_DISCRIMINATOR) => {
                 let mut account_infos = vec![
                     self.token_program.to_account_info(),
                     self.protocol_authority.to_account_info(),
                     self.input_vault.to_account_info(),
                     self.output_vault.to_account_info(),
+                    self.input_mint.to_account_info(),
                     self.output_mint.to_account_info(),
                     self.event_authority.to_account_info(),
                     self.jupiter_program.to_account_info(),
@@ -342,8 +339,10 @@ impl<'info> Looping<'info> {
                     AccountMeta::new(self.input_vault.key(), false),                    // user source token account
                     AccountMeta::new(self.output_vault.key(), false),                   // user destination token account
                     AccountMeta::new_readonly(self.jupiter_program.key(), false),       // [optional] destination token account
+                    AccountMeta::new_readonly(self.input_mint.key(), false),            // source mint
                     AccountMeta::new_readonly(self.output_mint.key(), false),           // destination mint
                     AccountMeta::new_readonly(self.jupiter_program.key(), false),       // [optional] platform fee account
+                    AccountMeta::new_readonly(self.jupiter_program.key(), false),       // [optional] token 2022 program
                     AccountMeta::new_readonly(self.event_authority.key(), false),       // event authority
                     AccountMeta::new_readonly(self.jupiter_program.key(), false),       // jupiter program
                 ];
@@ -357,7 +356,7 @@ impl<'info> Looping<'info> {
 
                 (account_infos, accounts)
             }
-            data if data.starts_with(&SHARED_ACCOUNTS_ROUTE_DISCRIMINATOR) => {
+            data if data.starts_with(&SHARED_ACCOUNTS_EXACT_OUT_ROUTE_DISCRIMINATOR) => {
                 // Build the swap instruction accounts
                 let mut account_infos = vec![
                     self.token_program.to_account_info(),
@@ -396,7 +395,7 @@ impl<'info> Looping<'info> {
                         is_writable: acc.is_writable,
                     }
                 }));
-
+            
                 (account_infos, accounts)
             }
             _ => {
@@ -415,7 +414,7 @@ impl<'info> Looping<'info> {
         Ok(())
     }
 
-    pub fn deposit(&mut self) -> Result<()> {
+    pub fn repay_debt(&mut self) -> Result<()> {
         let signer_seeds: [&[&[u8]];1] = [&[
             b"auth".as_ref(),
             &[PROTOCOL_AUTHORITY_BUMP]
@@ -425,19 +424,15 @@ impl<'info> Looping<'info> {
             AccountMeta::new(self.protocol_authority.key(), true),                      // owner   
             AccountMeta::new(self.obligation.key(), false),                             // obligation
             AccountMeta::new_readonly(self.lending_market.key(), false),                // lending_market
-            AccountMeta::new_readonly(self.lending_market_authority.key(), false),      // lending_market_authority
-            AccountMeta::new(self.reserve_collateral.key(), false),                     // reserve
+            AccountMeta::new(self.reserve_borrow.key(), false),                         // repay_reserve
             AccountMeta::new_readonly(self.output_mint.key(), false),                   // reserve_liquidity_mint
-            AccountMeta::new(self.reserve_liquidity_supply.key(), false),               // reserve_liquidity_supply
-            AccountMeta::new(self.reserve_collateral_mint.key(), false),                // reserve_collateral_mint
-            AccountMeta::new(self.reserve_destination_deposit_collateral.key(), false), // reserve_destination_deposit_collateral
+            AccountMeta::new(self.borrow_reserve_destination_liquidity.key(), false),   // reserve_destination_liquidity
             AccountMeta::new(self.output_vault.key(), false),                           // user_source_liquidity
-            AccountMeta::new_readonly(self.kamino_lending_program.key(), false),        // [optional] placeholder_user_destination_collateral
-            AccountMeta::new_readonly(self.token_program.key(), false),                 // collateral_token_program
-            AccountMeta::new_readonly(self.token_program.key(), false),                 // liquidity_token_program
+            AccountMeta::new_readonly(self.token_program.key(), false),                 // token_program
             AccountMeta::new_readonly(self.instruction_sysvar_account.key(), false),    // instruction_sysvar_account
-            AccountMeta::new(self.obligation_farm_state.key(), false),         // obligation_farm_user_state
-            AccountMeta::new(self.reserve_farm_state.key(), false),            // reserve_farm_state
+            AccountMeta::new_readonly(self.kamino_lending_program.key(), false),        // [optional] obligation_farm_user_state
+            AccountMeta::new_readonly(self.kamino_lending_program.key(), false),        // [optional] reserve_farm_state
+            AccountMeta::new_readonly(self.lending_market_authority.key(), false),      // lending_market_authority
             AccountMeta::new_readonly(self.farms_program.key(), false),                 // farms_program
         ];
 
@@ -445,19 +440,14 @@ impl<'info> Looping<'info> {
             self.protocol_authority.to_account_info(),
             self.obligation.to_account_info(),
             self.lending_market.to_account_info(),
-            self.lending_market_authority.to_account_info(),
-            self.reserve_collateral.to_account_info(),
+            self.reserve_borrow.to_account_info(),
             self.output_mint.to_account_info(),
-            self.reserve_liquidity_supply.to_account_info(),
-            self.reserve_collateral_mint.to_account_info(),
-            self.reserve_destination_deposit_collateral.to_account_info(),
+            self.borrow_reserve_destination_liquidity.to_account_info(),
             self.output_vault.to_account_info(),
             self.kamino_lending_program.to_account_info(),
             self.token_program.to_account_info(),
-            self.token_program.to_account_info(),
             self.instruction_sysvar_account.to_account_info(),
-            self.obligation_farm_state.to_account_info(),
-            self.reserve_farm_state.to_account_info(),
+            self.lending_market_authority.to_account_info(),
             self.farms_program.to_account_info(),
         ];
 
@@ -467,8 +457,8 @@ impl<'info> Looping<'info> {
             program_id: self.kamino_lending_program.key(),
             accounts,
             data: vec![
-                DEPOSIT_RESERVE_LIQUIDITY_AND_OBLIGATION_COLLATERAL_V2_DISCRIMINATOR.as_ref(),
-                &self.output_vault.amount.to_le_bytes(),
+                REPAY_OBLIGATION_LIQUIDITY_V2_DISCRIMINATOR.as_ref(),
+                &u64::MAX.to_le_bytes(),
             ].concat(),
         };
 

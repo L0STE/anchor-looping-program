@@ -109,7 +109,7 @@ export const swap = async (
 }> => {
     const quoteResponse = await (
         await fetch(
-            `https://lite-api.jup.ag/swap/v1/quote?inputMint=${inputMint.toString()}&outputMint=${outputMint.toString()}&amount=${amount}&slippageBps=${slippageBps}&onlyDirectRoutes=${onlyDirectRoutes}&swapMode=${exactOutRoute ? "ExactOut" : "ExactIn"}`,
+            `https://lite-api.jup.ag/swap/v1/quote?inputMint=${inputMint.toString()}&outputMint=${outputMint.toString()}&amount=${amount}&slippageBps=${slippageBps}&onlyDirectRoutes=${onlyDirectRoutes}&swapMode=${exactOutRoute ? "ExactOut" : "ExactIn"}&excludeDexes=ZeroFi,HumidiFi,Tessera`,
         )
       ).json();
   

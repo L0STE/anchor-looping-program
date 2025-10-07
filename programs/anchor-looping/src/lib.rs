@@ -27,19 +27,36 @@ pub mod anchor_looping {
     }
 
     pub fn looping<'info>(ctx: Context<'_, '_, '_, 'info, Looping<'info>>, has_collateral_or_borrows_flags: u8, swap_data: Vec<u8>, amount: u64) -> Result<()> {
-        // Withdraw the collateral to swap
+        // Borrow the collateral to swap
         ctx.accounts.refresh_reserve_collateral()?;
         ctx.accounts.refresh_reserve_borrow()?;
         ctx.accounts.refresh_obligation(has_collateral_or_borrows_flags)?;
         ctx.accounts.borrow_from_collateral(amount)?;
 
         // Swap the collateral
-        ctx.accounts.swap_collateral(swap_data, amount, ctx.remaining_accounts)?;
+        ctx.accounts.swap_collateral(&swap_data, amount, ctx.remaining_accounts)?;
         
         // Deposit Back the newly swapped collateral
         ctx.accounts.refresh_reserve_collateral()?;
         ctx.accounts.refresh_reserve_borrow()?;
         ctx.accounts.refresh_obligation(FLAG_HAS_BORROWS)?;
         ctx.accounts.deposit()
+    }
+
+    pub fn repay<'info>(ctx: Context<'_, '_, '_, 'info, Repay<'info>>, swap_data: Vec<u8>, in_amount: u64, out_amount: u64) -> Result<()> {
+        // Withdraw the collateral to swap
+        ctx.accounts.refresh_reserve_collateral()?;
+        ctx.accounts.refresh_reserve_borrow()?;
+        ctx.accounts.refresh_obligation()?;
+        ctx.accounts.withdraw_collateral(in_amount)?;
+
+        // Swap the collateral
+        ctx.accounts.swap_for_collateral(&swap_data, out_amount, ctx.remaining_accounts)?;
+
+        // Repay the debt
+        ctx.accounts.refresh_reserve_collateral()?;
+        ctx.accounts.refresh_reserve_borrow()?;
+        ctx.accounts.refresh_obligation()?;
+        ctx.accounts.repay_debt()
     }
 }

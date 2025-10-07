@@ -3,7 +3,7 @@ import { Program } from "@coral-xyz/anchor";
 import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey, SYSVAR_RENT_PUBKEY, SYSVAR_INSTRUCTIONS_PUBKEY, SystemProgram, AddressLookupTableProgram, Transaction, CreateLookupTableParams, ExtendLookupTableParams, ComputeBudgetProgram, TransactionMessage, AddressLookupTableAccount, VersionedTransaction } from "@solana/web3.js";
 import { AnchorLooping } from "../target/types/anchor_looping";
 import { getAssociatedTokenAddressSync, createAssociatedTokenAccountIdempotentInstruction, TOKEN_PROGRAM_ID } from "@solana/spl-token";
-import { CBBTC_COLLATERAL_FARM_ADDRESS, LENDING_MARKET, obligationAccount, obligationFarmStatePdaAccount, userMetadataAccount, LENDING_MARKET_AUTH, CBBTC_RESERVE, K_LEND_PROGRAM_ID, K_FARMS_PROGRAM_ID, USDC_RESERVE, SCOPE_ORACLE_ACCOUNT, CBBTC_SUPPLY_VAULT, CBBTC_COLLATERAL_MINT, CBBTC_COLLATERAL_VAULT, hasCollateralOrBorrows, USDC_FEE_RECEIVER, USDC_SUPPLY_VAULT,  } from "./kamino";
+import { CBBTC_COLLATERAL_FARM_ADDRESS, LENDING_MARKET, obligationAccount, obligationFarmStatePdaAccount, userMetadataAccount, LENDING_MARKET_AUTH, CBBTC_RESERVE, K_LEND_PROGRAM_ID, K_FARMS_PROGRAM_ID, USDC_RESERVE, SCOPE_ORACLE_ACCOUNT, CBBTC_SUPPLY_VAULT, CBBTC_COLLATERAL_MINT, CBBTC_COLLATERAL_VAULT, hasCollateralOrBorrows, USDC_FEE_RECEIVER, USDC_SUPPLY_VAULT, calcuateRepaymentAmount,  } from "./kamino";
 import { extractRemainingAccountsForSwap, jupiterEventAuthority, jupiterProgramId, swap } from "./jup";
 // Surfnet Helpers
 const surfnetAirdrop = async (connection: Connection, address: string, lamports: number) => {
@@ -248,6 +248,68 @@ describe("anchor-looping", () => {
         setComputeUnitLImitIx,
         createUsdcVaultIx,
         loopingTx,
+      ],
+    }).compileToV0Message(addressLookupTableAccounts)
+
+    const tx = new VersionedTransaction(messageV0);
+    tx.sign([payerKeypair]);
+
+    await program.provider.connection.sendTransaction(tx, {skipPreflight: true});
+  });
+
+  it("Repay", async () => {
+    const repayAmount = await calcuateRepaymentAmount(program.provider.connection, obligation);
+    const swapResult = await swap(cbBtcMint, usdcMint, repayAmount.toNumber(), 50, true, false, protocolAuthority, program.provider.connection);
+    const remainingAccounts = extractRemainingAccountsForSwap(swapResult.swapInstruction).remainingAccounts;
+
+    const setComputeUnitLImitIx = ComputeBudgetProgram.setComputeUnitLimit({
+      units: 1_200_000,
+    }); 
+
+    const repayTx = await program.methods.repay(
+      swapResult.swapInstruction.data,
+      new anchor.BN(Number(swapResult.quoteResponse.inAmount)),
+      new anchor.BN(repayAmount.toNumber())
+    ).accountsStrict({
+      payer,
+      protocolAuthority,
+      inputMint: cbBtcMint,
+      inputVault: cbBtcVault,
+      outputMint: usdcMint,
+      outputVault: usdcVault,
+      instructionSysvarAccount: SYSVAR_INSTRUCTIONS_PUBKEY,
+      tokenProgram: TOKEN_PROGRAM_ID,
+      userMetadata,
+      obligation,
+      lendingMarket: LENDING_MARKET,
+      lendingMarketAuthority: LENDING_MARKET_AUTH,
+      reserveCollateral: CBBTC_RESERVE,
+      reserveLiquiditySupply: CBBTC_SUPPLY_VAULT,
+      reserveCollateralMint: CBBTC_COLLATERAL_MINT,
+      reserveSourceCollateral: CBBTC_COLLATERAL_VAULT,
+      reserveBorrow: USDC_RESERVE,
+      borrowReserveDestinationLiquidity: USDC_SUPPLY_VAULT,
+      scopeOracle: SCOPE_ORACLE_ACCOUNT,
+      obligationFarmState,
+      reserveFarmState,
+      kaminoLendingProgram: K_LEND_PROGRAM_ID,
+      farmsProgram: K_FARMS_PROGRAM_ID,
+      eventAuthority: jupiterEventAuthority,
+      jupiterProgram: jupiterProgramId
+    })
+    .remainingAccounts(remainingAccounts)
+    .instruction();
+
+    const addressLookupTableAccounts: AddressLookupTableAccount[] = [];
+    addressLookupTableAccounts.push((await program.provider.connection.getAddressLookupTable(lookupTable)).value);
+    addressLookupTableAccounts.push(...swapResult.addressLookupTableAccounts);
+
+    const messageV0 = new TransactionMessage({
+      payerKey: payer,
+      recentBlockhash: (await program.provider.connection.getLatestBlockhash()).blockhash,
+      instructions: [
+        setComputeUnitLImitIx,
+        repayTx,
       ],
     }).compileToV0Message(addressLookupTableAccounts)
 
