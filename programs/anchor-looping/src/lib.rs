@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
 
 mod constant;
+use crate::constant::{FLAG_HAS_BORROWS, FLAG_HAS_COLLATERAL};
 mod instructions;
 use instructions::*;
 
@@ -8,7 +9,6 @@ declare_id!("HZ4pzn7pTpkVRpxpszbvBxxQSS11Pu3oYt2PyWW6iFKU");
 
 #[program]
 pub mod anchor_looping {
-    use crate::constant::{FLAG_HAS_BORROWS, FLAG_HAS_COLLATERAL};
 
     use super::*;
 

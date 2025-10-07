@@ -71,6 +71,7 @@ pub struct Deposit<'info> {
     #[account(mut)]
     /// CHECK: checked by the Kamino program
     pub reserve_collateral: UncheckedAccount<'info>,
+    #[account(mut)]
     /// CHECK: checked by the Kamino program
     pub reserve_borrow: Option<UncheckedAccount<'info>>,
     #[account(mut)]
@@ -259,8 +260,8 @@ impl<'info> Deposit<'info> {
             AccountMeta::new_readonly(self.token_program.key(), false),                 // collateral_token_program
             AccountMeta::new_readonly(self.token_program.key(), false),                 // liquidity_token_program
             AccountMeta::new_readonly(self.instruction_sysvar_account.key(), false),    // instruction_sysvar_account
-            AccountMeta::new_readonly(self.obligation_farm_state.key(), false),         // obligation_farm_user_state
-            AccountMeta::new_readonly(self.reserve_farm_state.key(), false),            // reserve_farm_state
+            AccountMeta::new(self.obligation_farm_state.key(), false),         // obligation_farm_user_state
+            AccountMeta::new(self.reserve_farm_state.key(), false),            // reserve_farm_state
             AccountMeta::new_readonly(self.farms_program.key(), false),                 // farms_program
         ];
 

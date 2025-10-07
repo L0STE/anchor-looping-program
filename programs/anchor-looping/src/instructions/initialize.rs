@@ -63,6 +63,7 @@ pub struct Initialize<'info> {
     )]
     /// CHECK: checked by the Kamino program
     pub lending_market_authority: UncheckedAccount<'info>,
+    #[account(mut)]
     /// CHECK: checked by the Kamino program
     pub reserve: UncheckedAccount<'info>,
     #[account(
@@ -77,6 +78,7 @@ pub struct Initialize<'info> {
     )]
     /// CHECK: checked by the Kamino program
     pub obligation_farm_state: UncheckedAccount<'info>,
+    #[account(mut)]
     /// CHECK: checked by the Kamino program
     pub reserve_farm_state: UncheckedAccount<'info>,
     #[account(address = KAMINO_PROGRAM_ID)]
