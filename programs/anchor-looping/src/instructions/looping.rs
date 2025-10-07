@@ -5,7 +5,7 @@ use crate::constant::{FLAG_HAS_BORROWS, FLAG_HAS_COLLATERAL, JUPITER_PROGRAM_ID,
 const REFRESH_RESERVE_DISCRIMINATOR: [u8; 8] = [2, 218, 138, 235, 79, 201, 25, 102];
 const REFRESH_OBLIGATION_DISCRIMINATOR: [u8; 8] = [33, 132, 147, 228, 151, 192, 72, 89];
 const DEPOSIT_RESERVE_LIQUIDITY_AND_OBLIGATION_COLLATERAL_V2_DISCRIMINATOR: [u8; 8] = [216, 224, 191, 27, 204, 151, 102, 175];
-const BORROW_OBLIGATION_COLLATERAL_V2_DISCRIMINATOR: [u8; 8] = [148, 51, 45, 40, 70, 136, 148, 231];
+const BORROW_OBLIGATION_LIQUIDITY_V2_DISCRIMINATOR: [u8; 8] = [161, 128, 143, 245, 171, 199, 194, 6];
 const SHARED_ACCOUNTS_ROUTE_DISCRIMINATOR: [u8; 8] = [193, 32, 155, 51, 65, 214, 156, 129];
 
 #[derive(Accounts)]
@@ -80,23 +80,24 @@ pub struct Looping<'info> {
     #[account(mut)]
     /// CHECK: checked by the Kamino program
     pub reserve_collateral: UncheckedAccount<'info>,
-    /// CHECK: checked by the Kamino program
-    pub reserve_borrow: UncheckedAccount<'info>,
     #[account(mut)]
     /// CHECK: checked by the Kamino program
     pub reserve_liquidity_supply: UncheckedAccount<'info>,
-    #[account(mut)]
-    /// CHECK: checked by the Kamino program
-    pub borrow_reserve_source_liquidity: UncheckedAccount<'info>,
-    #[account(mut)]
-    /// CHECK: checked by the Kamino program
-    pub borrow_reserve_liquidity_fee_receiver: UncheckedAccount<'info>,
     /// CHECK: checked by the Kamino program
     #[account(mut)]
     pub reserve_collateral_mint: UncheckedAccount<'info>,
     #[account(mut)]
     /// CHECK: checked by the Kamino program
     pub reserve_destination_deposit_collateral: UncheckedAccount<'info>,
+    #[account(mut)]
+    /// CHECK: checked by the Kamino program
+    pub reserve_borrow: UncheckedAccount<'info>,
+    #[account(mut)]
+    /// CHECK: checked by the Kamino program
+    pub borrow_reserve_source_liquidity: UncheckedAccount<'info>,
+    #[account(mut)]
+    /// CHECK: checked by the Kamino program
+    pub borrow_reserve_liquidity_fee_receiver: UncheckedAccount<'info>,
     /// CHECK: checked by the Kamino program
     pub scope_oracle: UncheckedAccount<'info>,
     #[account(
@@ -217,18 +218,16 @@ impl<'info> Looping<'info> {
             AccountMeta::new_readonly(self.lending_market.key(), false),            // lending_market
             AccountMeta::new(self.obligation.key(), false),                         // obligation
         ];
-        accounts.push(AccountMeta::new_readonly(self.reserve_collateral.key(), false));
+        accounts.push(AccountMeta::new(self.reserve_collateral.key(), false));
         if flags & FLAG_HAS_BORROWS != 0 {
-            accounts.push(AccountMeta::new_readonly(self.reserve_borrow.key(), false));
+            accounts.push(AccountMeta::new(self.reserve_borrow.key(), false));
         }
 
         let mut account_infos = vec![
             self.lending_market.to_account_info(),
             self.obligation.to_account_info(),
         ];
-        if flags & FLAG_HAS_COLLATERAL != 0 {
-            account_infos.push(self.reserve_collateral.to_account_info());
-        }
+        account_infos.push(self.reserve_collateral.to_account_info());
         if flags & FLAG_HAS_BORROWS != 0 {
             account_infos.push(self.reserve_borrow.to_account_info());
         }
@@ -264,12 +263,12 @@ impl<'info> Looping<'info> {
             AccountMeta::new_readonly(self.input_mint.key(), false),                    // borrow_reserve_liquidity_mint
             AccountMeta::new(self.borrow_reserve_source_liquidity.key(), false),        // reserve_source_liquidity
             AccountMeta::new(self.borrow_reserve_liquidity_fee_receiver.key(), false),  // borrow_reserve_liquidity_fee_receiver
-            AccountMeta::new_readonly(self.input_vault.key(), false),                   // user_destination_liquidity
+            AccountMeta::new(self.input_vault.key(), false),                            // user_destination_liquidity
             AccountMeta::new_readonly(self.kamino_lending_program.key(), false),        // [optional] referrer_token_state
             AccountMeta::new_readonly(self.token_program.key(), false),                 // token_program
             AccountMeta::new_readonly(self.instruction_sysvar_account.key(), false),    // instruction_sysvar_account
-            AccountMeta::new_readonly(self.kamino_lending_program.key(), false),         // [optional] obligation_farm_user_state
-            AccountMeta::new_readonly(self.kamino_lending_program.key(), false),            // [optional] reserve_farm_state
+            AccountMeta::new_readonly(self.kamino_lending_program.key(), false),        // [optional] obligation_farm_user_state
+            AccountMeta::new_readonly(self.kamino_lending_program.key(), false),        // [optional] reserve_farm_state
             AccountMeta::new_readonly(self.farms_program.key(), false),                 // farms_program
         ];
 
@@ -294,7 +293,7 @@ impl<'info> Looping<'info> {
             program_id: self.kamino_lending_program.key(),
             accounts,
             data: vec![
-                BORROW_OBLIGATION_COLLATERAL_V2_DISCRIMINATOR.as_ref(),
+                BORROW_OBLIGATION_LIQUIDITY_V2_DISCRIMINATOR.as_ref(),
                 &amount.to_le_bytes(),
             ].concat(),
         };
@@ -396,8 +395,8 @@ impl<'info> Looping<'info> {
             AccountMeta::new_readonly(self.token_program.key(), false),                 // collateral_token_program
             AccountMeta::new_readonly(self.token_program.key(), false),                 // liquidity_token_program
             AccountMeta::new_readonly(self.instruction_sysvar_account.key(), false),    // instruction_sysvar_account
-            AccountMeta::new_readonly(self.obligation_farm_state.key(), false),         // obligation_farm_user_state
-            AccountMeta::new_readonly(self.reserve_farm_state.key(), false),            // reserve_farm_state
+            AccountMeta::new(self.obligation_farm_state.key(), false),         // obligation_farm_user_state
+            AccountMeta::new(self.reserve_farm_state.key(), false),            // reserve_farm_state
             AccountMeta::new_readonly(self.farms_program.key(), false),                 // farms_program
         ];
 
@@ -407,11 +406,11 @@ impl<'info> Looping<'info> {
             self.lending_market.to_account_info(),
             self.lending_market_authority.to_account_info(),
             self.reserve_collateral.to_account_info(),
-            self.input_mint.to_account_info(),
+            self.output_mint.to_account_info(),
             self.reserve_liquidity_supply.to_account_info(),
             self.reserve_collateral_mint.to_account_info(),
             self.reserve_destination_deposit_collateral.to_account_info(),
-            self.input_vault.to_account_info(),
+            self.output_vault.to_account_info(),
             self.kamino_lending_program.to_account_info(),
             self.token_program.to_account_info(),
             self.token_program.to_account_info(),
@@ -421,14 +420,14 @@ impl<'info> Looping<'info> {
             self.farms_program.to_account_info(),
         ];
 
-        self.input_vault.reload()?;
+        self.output_vault.reload()?;
 
         let deposit_ix = Instruction {
             program_id: self.kamino_lending_program.key(),
             accounts,
             data: vec![
                 DEPOSIT_RESERVE_LIQUIDITY_AND_OBLIGATION_COLLATERAL_V2_DISCRIMINATOR.as_ref(),
-                &self.input_vault.amount.to_le_bytes(),
+                &self.output_vault.amount.to_le_bytes(),
             ].concat(),
         };
 
